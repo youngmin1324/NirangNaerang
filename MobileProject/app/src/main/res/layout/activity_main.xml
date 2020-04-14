@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/back"
+    tools:context="org.androidtown.sharepic.MainActivity">
+
+
+    <!--빈 레이아웃을 중간중간 두어서 weight 로 처리함-->
+
+    <LinearLayout
+        android:layout_weight="1.5"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"></LinearLayout>
+
+    <LinearLayout
+        android:layout_weight="0.25"
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="0dp">
+
+        <LinearLayout
+            android:layout_weight="1"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"></LinearLayout>
+
+        <ImageButton
+            android:background="@drawable/albumbtn"
+            android:onClick="goAlbum"
+            android:layout_width="0dp"
+            android:layout_weight="2"
+            android:layout_height="wrap_content" />
+
+        <LinearLayout
+            android:layout_weight="1"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"></LinearLayout>
+
+        <ImageButton
+            android:background="@drawable/sharebtn"
+            android:onClick="connectBT"
+            android:layout_width="0dp"
+            android:layout_weight="2"
+            android:layout_height="wrap_content" />
+
+        <LinearLayout
+            android:layout_weight="1"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"></LinearLayout>
+
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_weight="1"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"></LinearLayout>
+
+</LinearLayout>

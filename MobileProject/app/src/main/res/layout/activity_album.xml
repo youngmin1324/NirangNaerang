@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    android:background="@drawable/albumback"
+    android:orientation="vertical"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".AlbumActivity"
+    tools:layout_editor_absoluteY="81dp">
+
+    <LinearLayout
+        android:layout_weight="3"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"></LinearLayout>
+
+
+    <android.support.v7.widget.RecyclerView
+        android:layout_weight="4.1"
+        android:id="@+id/recyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+         />
+
+    <LinearLayout
+        android:layout_weight="0.5"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"></LinearLayout>
+
+</LinearLayout>

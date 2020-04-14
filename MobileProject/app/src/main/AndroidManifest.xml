@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.androidtown.sharepic"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <uses-sdk android:minSdkVersion="15" />
+
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+
+    <uses-feature android:name="android.hardware.camera" />
+
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <uses-feature android:name="android.hardware.camera2" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
+
+    <application
+        android:name=".MyApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AppCompat.NoActionBar">
+        <service android:name=".BTPhotoTransfer.BTService" android:enabled="true" android:stopWithTask="true"></service>
+        <service android:name=".BTPhotoTransfer.TransferService" android:enabled="true" android:stopWithTask="true"></service>
+        <activity android:name=".MainActivity">
+        </activity>
+        <activity android:name=".BTPhotoTransfer.SelectBT2" />
+        <activity android:name=".PictureActivity" />
+        <activity android:name=".SplashActivity"
+            android:theme="@style/SplashTheme"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <activity android:name=".ImageActivity" />
+        <activity android:name=".PhotoActivity"></activity>
+        <activity android:name=".AlbumActivity"></activity>
+
+        <provider
+            android:name="android.support.v4.content.FileProvider"
+            android:authorities="org.androidtown.sharepic"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+        <activity android:name=".PicObserve"></activity>
+    </application>
+
+
+
+</manifest>
