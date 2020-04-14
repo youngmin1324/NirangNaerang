@@ -1,8 +1,8 @@
 # NirangNaerang
-NirangNaerang Photo Auto-Sharing App(Android) 
-
+NirangNaerang Photo Auto-Sharing App(Android)  
 사진을 찍는 즉시 자동으로 블루투스에 연결된 상대방의 기기로 사진을 전송합니다.
-
+  
+  
 # MobileProject 폴더
 니랑내랑 앱의 소스코드를 담고 있습니다.
 
