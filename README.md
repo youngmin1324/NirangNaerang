@@ -11,3 +11,6 @@ NirangNaerang Photo Auto-Sharing App(Android)
 
 - 니랑내랑_보고서.pdf  
 프로젝트에 대한 상세한 설명을 확인할 수 있습니다.
+
+### GitHub 협업 기록 확인 URL
+https://github.com/GomgomKim/MobileProject
