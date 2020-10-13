@@ -11,8 +11,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
-import org.androidtown.sharepic.BTPhotoTransfer.BTService;
-import org.androidtown.sharepic.BTPhotoTransfer.SelectBT2;
+import org.androidtown.sharepic.BTPhotoTransfer.BTStartActivity;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -32,19 +31,10 @@ public class MainActivity extends AppCompatActivity {
                 requestPermission(WES);
             }
         }
-
-        MyApplication myapp = (MyApplication)getApplication();
-        if(!myapp.isOn()){
-            stopService(new Intent(this, BTService.class));
-        }
     }
 
     public void connectBT(View view) {
-//        Intent intent = new Intent(MainActivity.this, SelectBT.class);
-        //BTService를 시작합니다. //background에서 실행 //블루투스 초기화함
-        Intent Service = new Intent(this, BTService.class);
-        startService(Service);
-        Intent intent = new Intent(MainActivity.this, SelectBT2.class);
+        Intent intent = new Intent(MainActivity.this, BTStartActivity.class);
         startActivity(intent);
     }
 
@@ -58,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode == SelectBT2.BT_DISABLE) {
+        if (requestCode == BTStartActivity.BT_DISABLE) {
             Toast.makeText(this,"You should turn on bluetooth",Toast.LENGTH_SHORT).show();
         }
     }

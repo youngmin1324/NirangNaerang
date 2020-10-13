@@ -35,11 +35,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.NoActionBar">
-        <service android:name=".BTPhotoTransfer.BTService" android:enabled="true" android:stopWithTask="true"></service>
         <service android:name=".BTPhotoTransfer.TransferService" android:enabled="true" android:stopWithTask="true"></service>
         <activity android:name=".MainActivity">
         </activity>
-        <activity android:name=".BTPhotoTransfer.SelectBT2" />
+        <activity android:name=".BTPhotoTransfer.BTStartActivity" />
         <activity android:name=".PictureActivity" />
         <activity android:name=".SplashActivity"
             android:theme="@style/SplashTheme"

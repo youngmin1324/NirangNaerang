@@ -3,10 +3,13 @@ package org.androidtown.sharepic.BTPhotoTransfer;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.ArrayAdapter;
 import android.widget.CompoundButton;
@@ -20,16 +23,22 @@ import org.androidtown.sharepic.MyApplication;
 import org.androidtown.sharepic.R;
 
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Set;
 
 /*
 참조 : 사진을 전송하는 쪽이 클라이언트이고 받는 쪽이 서버입니다.
 따라서 클라이언트handler와 서버handler가 나눠져 있습니다.
 */
-public class SelectBT2 extends Activity {
-    private static final String TAG = "BTPHOTO/SelectBT2";
+public class BTStartActivity extends Activity {
+    private static final String TAG = "BTPHOTO/BTStartActivity";
+    private BluetoothAdapter adapter;
+    private Set<BluetoothDevice> pairedDevices;
     private Spinner deviceSpinner;
     private ProgressDialog progressDialog;
     private MyDBHandler dbHandler;
+    private static final int PICTURE_RESULT_CODE = 1234;
+    private static final int REQUEST_ENABLE_BT = 10;
     private static final int PERMISSION_REQUEST_CODE = 123;
     public static final int BT_DISABLE = 0;
 //    private final String sendStringPath = Environment.getExternalStorageDirectory()+"/nerang";
@@ -71,7 +80,6 @@ public class SelectBT2 extends Activity {
         toggleButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                MyApplication myapp = (MyApplication)getApplication();
                 if(isChecked) {
                     if(myapp.getAlbum_title()==null){
                         start();
@@ -87,36 +95,71 @@ public class SelectBT2 extends Activity {
 //        dbtestEdit = findViewById(R.id.query);
 //        dbtestGrid = findViewById(R.id.queryGrid);
 
-        BTService.pairedDevices = null;
+        pairedDevices = null;
 
         clientButton = (ToggleButton) findViewById(R.id.clientButton);
         deviceSpinner = (Spinner) findViewById(R.id.deviceSpinner);
 
+        adapter =  BluetoothAdapter.getDefaultAdapter();
+        if (adapter.isEnabled()) {
+            pairing();
+        } else {
+            startActivityForResult(new Intent("android.bluetooth.adapter.action.REQUEST_ENABLE"), REQUEST_ENABLE_BT);
+        }
 
         if(myapp.isOn()){
             deviceSpinner.setEnabled(false);
         }
+
         clientButton.setChecked(myapp.isOn());
+        clientButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                if(isChecked) {
+                    if(deviceSpinner.isEnabled()) {
+                        DeviceData deviceData = (BTStartActivity.DeviceData) deviceSpinner.getSelectedItem();
+                        for (BluetoothDevice device : adapter.getBondedDevices()) {
+                            if (device.getAddress().contains(deviceData.getValue())) {
+                                myapp.setDevice(device);
+                                Intent i = new Intent(getApplicationContext(), TransferService.class);
+                                startService(i);
+                            }
+                        }
+                    }
+                    myapp.setOn(true);
+                    deviceSpinner.setEnabled(false);
+
+                    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+                    SharedPreferences.Editor editor = preferences.edit();
+                    editor.putLong("latestAddedTime", (new Date()).getTime()/1000); //새로 찍는다.
+                    editor.commit();
+                    Log.d(TAG, "latestAddedTime update");
+                }
+                else {
+                    if(!deviceSpinner.isEnabled()) {
+                        stopService(new Intent(getApplicationContext(), TransferService.class));
+                    }
+                    myapp.setOn(false);
+                    myapp.setAlbum_title(null);
+                    myapp.setDevice(null);
+                    deviceSpinner.setEnabled(true);
+                    finish();
+                }
+            }
+        });
 
         dbHandler = new MyDBHandler(this, null, null, 1); //전송할파일uri 저장하기 위한 db handler입니다.
-
-
-        if (BTService.adapter.isEnabled()) {
-            pairing();
-        } else {
-            startActivityForResult(new Intent("android.bluetooth.adapter.action.REQUEST_ENABLE"), BTService.REQUEST_ENABLE_BT);
-        }
     }
 
     private void pairing() {
-        BTService.pairedDevices = BTService.adapter.getBondedDevices();
-        if (BTService.pairedDevices != null) {
-            if (BTService.pairedDevices.size() == 0) {
+        pairedDevices = adapter.getBondedDevices();
+        if (pairedDevices != null) {
+            if (pairedDevices.size() == 0) {
                 Toast.makeText(this,"There are no paired device. Pairing please.",Toast.LENGTH_SHORT).show();
             } else {
                 deviceDataList = new ArrayList<DeviceData>();
              //   spinList = new ArrayList<>();
-                for (BluetoothDevice device : BTService.pairedDevices) {
+                for (BluetoothDevice device : pairedDevices) {
                     deviceDataList.add(new DeviceData(device.getName(), device.getAddress()));
                   //  spinList.add(device.getName()); //기연추가 스핀 목록위해 String 어레이리스트 생성
                 }
@@ -125,36 +168,6 @@ public class SelectBT2 extends Activity {
                 ArrayAdapter<DeviceData> deviceArrayAdapter = new ArrayAdapter<DeviceData>(this, android.R.layout.simple_spinner_item, deviceDataList);
                 deviceArrayAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
                 deviceSpinner.setAdapter(deviceArrayAdapter);
-
-
-                clientButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-                    @Override
-                    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                        if(isChecked) {
-                            if(deviceSpinner.isEnabled()) {
-                                DeviceData deviceData = (SelectBT2.DeviceData) deviceSpinner.getSelectedItem();
-                                for (BluetoothDevice device : BTService.adapter.getBondedDevices()) {
-                                    if (device.getAddress().contains(deviceData.getValue())) {
-                                        BTService.device = device;
-                                        Intent i = new Intent(getApplicationContext(), TransferService.class);
-                                        startService(i);
-                                    }
-                                }
-                            }
-                            myapp.setOn(true);
-                            deviceSpinner.setEnabled(false);
-                        }
-                        else {
-                            if(!deviceSpinner.isEnabled()) {
-                                stopService(new Intent(getApplicationContext(), TransferService.class));
-                            }
-                            myapp.setOn(false);
-                            myapp.setAlbum_title(null);
-                            deviceSpinner.setEnabled(true);
-                            finish();
-                        }
-                    }
-                });
             }
         }
     }
@@ -177,12 +190,6 @@ public class SelectBT2 extends Activity {
         String value;
     }
 
-
-
-
-
-
-
     @Override
     protected void onStop() {
         super.onStop();
@@ -202,7 +209,7 @@ public class SelectBT2 extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
 
 
-        if (requestCode == BTService.REQUEST_ENABLE_BT) {
+        if (requestCode == REQUEST_ENABLE_BT) {
             if (resultCode == RESULT_OK) { //연결에 성공하면 pairing한다
                 pairing();
             }else{
@@ -271,12 +278,12 @@ public class SelectBT2 extends Activity {
 
 //    // 폴더 지정
 //    public void selectFolderBTN(View view) {
-//        AlertDialog.Builder ad = new AlertDialog.Builder(SelectBT2.this);
+//        AlertDialog.Builder ad = new AlertDialog.Builder(BTStartActivity.this);
 //
 //        ad.setTitle("앨범 선택");       // 제목 설정
 //        ad.setMessage("저장할 폴더 이름을 적어주세요");   // 내용 설정
 //
-//        final EditText et = new EditText(SelectBT2.this);
+//        final EditText et = new EditText(BTStartActivity.this);
 //        ad.setView(et);
 //
 //        ad.setPositiveButton("Yes", new DialogInterface.OnClickListener() {

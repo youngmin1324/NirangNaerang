@@ -1,6 +1,7 @@
 package org.androidtown.sharepic.BTPhotoTransfer;
 
 import android.app.Service;
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -26,8 +27,9 @@ import org.androidtown.sharepic.Album;
 import org.androidtown.sharepic.AlbumDBHandler;
 import org.androidtown.sharepic.MyApplication;
 import org.androidtown.sharepic.Photo;
-import org.androidtown.sharepic.btxfr.ClientThread;
+import org.androidtown.sharepic.btxfr.Client;
 import org.androidtown.sharepic.btxfr.MessageType;
+import org.androidtown.sharepic.btxfr.ProgressData;
 import org.androidtown.sharepic.btxfr.ServerThread;
 
 import java.io.ByteArrayOutputStream;
@@ -38,17 +40,21 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Set;
 
 public class TransferService extends Service {
     private static final String TAG = "BTPHOTO/TransferService";
-
-    ContentResolver resolver;
-    ContentObserver observer;
-    SharedPreferences preferences;
-    ArrayList<String> filePaths;
-    ArrayList<Uri> uris;
-    private String fileName; //찍은 사진파일 이름
-    File file;
+    private BluetoothAdapter adapter;
+    private Handler clientHandler;
+    private Handler serverHandler;
+    private Client client;
+    private ServerThread serverThread;
+    private static final String IMAGE_FILE_NAME = "nr";
+    private static final int IMAGE_QUALITY = 100;
+    private ContentResolver resolver;
+    private ContentObserver observer;
+    private SharedPreferences preferences;
+    private ArrayList<Uri> uris;
 
     ///////////// 앨범 추가 기능 /////////////
     private ContentResolver contentResolver;
@@ -66,13 +72,15 @@ public class TransferService extends Service {
     public void init2() {
         contentResolver = this.getContentResolver();
 
-        BTService.clientHandler = new Handler() {
+        clientHandler = new Handler() {
 
             @Override
             public void handleMessage(Message message) { //보내는 쪽
                 switch (message.what) {
                     case MessageType.READY_FOR_DATA: {
                         try {
+                            File file = new File((String)message.obj);
+
                             //전처리 & 전송
                             if(file==null)
                                 break;
@@ -80,32 +88,32 @@ public class TransferService extends Service {
                             fileName = "btimage.jpg"; //임의 지정
                             File file = new File(sendStringPath,fileName);*/
 
+                            Log.d(TAG, "ready for data");
                             ByteArrayOutputStream compressedImageStream = new ByteArrayOutputStream();
                             BitmapFactory.Options options = new BitmapFactory.Options();
                             options.inSampleSize = 2;
                             Bitmap image = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
 
-                            image.compress(Bitmap.CompressFormat.JPEG, BTService.IMAGE_QUALITY, compressedImageStream);
+                            image.compress(Bitmap.CompressFormat.JPEG, IMAGE_QUALITY, compressedImageStream);
                             byte[] compressedImage = compressedImageStream.toByteArray();
                             Log.v(TAG, "Compressed image size: " + compressedImage.length);
-
-//                            ImageView imageView = (ImageView) findViewById(R.id.imageView);
-//                            imageView.setImageBitmap(image);
 
                             // Invoke client thread to send
                             Message imageMessage = new Message();
                             imageMessage.obj = compressedImage;
-                            BTService.clientThread.incomingHandler.sendMessage(imageMessage);
+                            client.incomingHandler.sendMessage(imageMessage);
 
                         } catch (Exception e) {
                             Log.d(TAG, e.toString());
+                            Message msg = new Message();
+                            msg.obj = null;
+                            client.incomingHandler.sendMessage(msg);
                         }
 
                         break;
                     }
 
                     case MessageType.COULD_NOT_CONNECT: {//전송 불가능한 상태
-                        /*todo : 보내려는 파일 db에 저장*/
                         Toast.makeText(getApplicationContext(), "Could not connect to the paired device", Toast.LENGTH_SHORT).show();
                         break;
                     }
@@ -128,28 +136,19 @@ public class TransferService extends Service {
         };
 
 
-        BTService.serverHandler = new Handler() {
+        serverHandler = new Handler() {
             @Override
             public void handleMessage(Message message) {
                 switch (message.what) {
                     case MessageType.DATA_RECEIVED: {
-//                        if (progressDialog != null) {
-//                            progressDialog.dismiss();
-//                            progressDialog = null;
-//                        }
-
                         BitmapFactory.Options options = new BitmapFactory.Options();
                         options.inSampleSize = 2;
                         Bitmap image = BitmapFactory.decodeByteArray(((byte[]) message.obj), 0, ((byte[]) message.obj).length, options);
                         SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
                         Date currentTime_1 = new Date();
                         String dateString = formatter.format(currentTime_1);
-                        saveBitmaptoJpeg(image, "nirang", BTService.IMAGE_FILE_NAME + dateString);//파일명예시: nr20180606043124.jpg
+                        saveBitmaptoJpeg(image, "nirang", IMAGE_FILE_NAME + dateString);//파일명예시: nr20180606043124.jpg
 
-
-
-//                        ImageView imageView = (ImageView) findViewById(R.id.imageView);
-//                        imageView.setImageBitmap(image);
                         break;
                     }
 
@@ -163,7 +162,7 @@ public class TransferService extends Service {
 //                        BTService.progressData = (ProgressData) message.obj;
 //                        double pctRemaining = 100 - (((double) BTService.progressData.remainingSize / BTService.progressData.totalSize) * 100);
 //                        if (progressDialog == null) {
-//                            progressDialog = new ProgressDialog(SelectBT2.this);
+//                            progressDialog = new ProgressDialog(BTStartActivity.this);
 //                            progressDialog.setMessage("Receiving photo...");
 //                            progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
 //                            progressDialog.setProgress(0);
@@ -182,28 +181,30 @@ public class TransferService extends Service {
             }
         };
 
-        if (BTService.serverThread == null) {
+        adapter = BluetoothAdapter.getDefaultAdapter();
+
+        if (serverThread == null) {
             Log.v(TAG, "Starting server thread.  Able to accept photos.");
-            BTService.serverThread = new ServerThread(BTService.adapter, BTService.serverHandler);
-            BTService.serverThread.start();
+            serverThread = new ServerThread(adapter, serverHandler);
+            serverThread.start();
         }
 
-        Log.v(TAG, "Starting client thread");
-        if (BTService.clientThread != null) {
-            BTService.clientThread.cancel();
-        }
-        BTService.clientThread = new ClientThread(BTService.device, BTService.clientHandler);
-        BTService.clientThread.start();
+//        Log.v(TAG, "Starting client thread");
+//        if (clientThread != null) {
+//            clientThread.cancel();
+//        }
+//        clientThread = new ClientThread(device, clientHandler);
+//        clientThread.start();
 
         resolver = getContentResolver();
         observer = new ContentObserver(new Handler()) {
             @Override
             public void onChange(boolean selfChange) {
-                super.onChange(selfChange);
+                super.onChange((selfChange));
                 Log.i("DB변경", "DB가 변경됨을 감지했습니다.");
-                getAddedFile();
+                ArrayList<String> filePaths = getAddedFile();
                 if(filePaths.size() > 0) {
-                    moveFile();
+                    moveFile(filePaths);
                 }
             }
         };
@@ -256,136 +257,91 @@ public class TransferService extends Service {
         }
     }
 
-    void getAddedFile(){
-        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-        long lastDatabaseUpdateTime = preferences.getLong("lastDatabaseUpdateTime", 0); //전에 추가됐던 시간 가져옴
-        long newDatabaseUpdateTime = (new Date()).getTime(); //이미지 추가된 시간 저장
-
-        String[] projection = { MediaStore.Images.Media.DATA };
-
-        String where = MediaStore.MediaColumns.DATE_ADDED + ">" + (lastDatabaseUpdateTime/1000); //조건 : 전에 추가됐던 시간 이후에 추가 된 사진
-
-        Cursor imageCursor = MediaStore.Images.Media.query(getContentResolver(), MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, where, null, null);
-
-
-        filePaths = new ArrayList<>();
-        uris = new ArrayList<>(imageCursor.getCount());
-
-        int dataColumnIndex = imageCursor.getColumnIndex(projection[0]);
-
-        if (imageCursor == null) {
-            // Error 발생
-            // 적절하게 handling 해주세요
-        } else {
-            int count = imageCursor.getCount();
-            if (count > 0 && imageCursor.moveToFirst()) {
-                do {
-                    String filePath = imageCursor.getString(dataColumnIndex);
-                    if (!filePath.contains("nerang")) {
-                        if(!filePath.contains("nirang")) {
-                            filePaths.add(filePath);
-                            Uri imageUri = Uri.parse(filePath);
-                            uris.add(imageUri);
-
-//                            // DB에 추가
-//                            MyDBHandler dbHandler = new MyDBHandler(this, null, null, 1);
-//                            Picture picture = new Picture(imageUri, pathNow);
-//                            dbHandler.addPicture(picture);
-                        }
-                    }
-                } while(imageCursor.moveToNext());
-            }
-        }
-
-        imageCursor.close();
-
-//If no exceptions, then save the new timestamp
-        SharedPreferences.Editor editor = preferences.edit();
-        editor.putLong("lastDatabaseUpdateTime", newDatabaseUpdateTime); //새로 찍는다.
-        editor.commit();
-
-    }
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         return super.onStartCommand(intent, flags, startId);
     }
 
-    void moveFile(){
-
-        //내랑 폴더 생성
-//                String root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).toString()+ "/Camera/nerang";
-        String root = Environment.getExternalStorageDirectory().toString()+ "/nerang"; //영민 변경
-
-        File myDir = new File(root);
-        if(!myDir.exists()){
-            myDir.mkdirs();
-        }
+    void moveFile(ArrayList<String> filePaths) {
+        Log.d(TAG, "*moveFile*");
 
         String filePath;
-        Bitmap picture_bitmap;
         Uri uri;
         for(int i=0;i<filePaths.size();i++){
             filePath = filePaths.get(i);
+            Log.d(TAG, "file: " + filePath);
+
             uri = uris.get(i);
+            File file = new File(filePath);
 
-            //사진 복사본 파일 저장
-            String image_name = String.valueOf(System.currentTimeMillis());
-            String fname = "Image-" + image_name + ".jpg"; //이미지 이름
-            file = new File(myDir, fname);
-            fileName = fname;
-            System.out.println(file.getAbsolutePath()); //로그캣 확인
-            // if (file.exists()) file.delete();
-            Log.i("LOAD", root + fname); //복사본 저장 확인
-            try { // 앨범에 이미지 복사본 저장
-                FileOutputStream out = new FileOutputStream(file);
-                picture_bitmap = BitmapFactory.decodeFile(filePath);
-                picture_bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out); //영민 jpg로 변경
-                out.flush();
-                out.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            ///////////// 앨범 추가 /////////////
+            insertAlbum(file);
 
-            ///////////// 앨범 추가 기능 /////////////
-            String uString = getImageContentUri(this, file).toString();
-            String imageId = uString.substring(uString.lastIndexOf("/")+1);
-            System.out.println(imageId);
-            Uri thumbnailUri = uriToThumbnail(imageId);
-            Photo photo = new Photo(thumbnailUri, Uri.parse(file.getAbsolutePath()));
-            MyApplication myapp = (MyApplication)getApplication();
-            if (myapp.getAlbum_title() != null) {
-                newProduct(photo);
-            }
-//
-//
             //자동전송 기연추가
-            for (BluetoothDevice device : BTService.adapter.getBondedDevices()) {
-                if (device.equals(BTService.device)) { //서비스에서 받아오도록했음
-                    Log.v(TAG, "Starting client thread");
-                    if (BTService.clientThread != null) {
-                        BTService.clientThread.cancel();
+            for (BluetoothDevice device : adapter.getBondedDevices()) {
+                if (((MyApplication)getApplication()).getDevice().equals(device)) { //서비스에서 받아오도록했음
+                    if(client == null){
+                        client = new Client(device, clientHandler);
                     }
-                    BTService.clientThread = new ClientThread(device, BTService.clientHandler);
-                    BTService.clientThread.start();
+
+                    client.setmFilePath(filePath);
+                    new Thread(client).start();
                 }
             }
+        }
+    }
+
+    ArrayList<String> getAddedFile(){
+        Log.d(TAG, "*getAddedFile*");
+
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+
+        long latestAddedTime = preferences.getLong("latestAddedTime", 0); //전에 추가됐던 시간 가져옴
+
+        String[] projection = { MediaStore.Images.Media.DATA, MediaStore.Images.Media.DATE_ADDED };
+
+        String where = MediaStore.MediaColumns.DATE_ADDED + ">" + (latestAddedTime); //조건 : 전에 추가됐던 시간 이후에 추가 된 사진
+
+        Cursor imageCursor = MediaStore.Images.Media.query(getContentResolver(), MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, where, null, null);
 
 
-            //앨범 삭제
-            MediaScannerConnection.scanFile(getApplicationContext(), new String[]{file.getPath()}, new String[]{"image/jpeg"}, null);
-            Uri images = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-            String selection = MediaStore.Images.Media.DATA + " = ?";
-            String[] selectionArgs = {filePath}; // 실제 파일의 경로
-            resolver.delete(images, selection, selectionArgs);
+        ArrayList<String> filePaths = new ArrayList<>();
+        uris = new ArrayList<>(imageCursor.getCount());
 
+        int dataColumnIndex = imageCursor.getColumnIndex(projection[0]);
+        int dateAddedColumnIndex = imageCursor.getColumnIndex(projection[1]);
 
-            //원본 파일 삭제
-            File file_delete = new File(uri.getPath());
-            if(file_delete.exists()){
-                file_delete.delete();
+        long latestAddedTimeTmp = latestAddedTime;
+        if (imageCursor != null){
+            int count = imageCursor.getCount();
+            if (count > 0 && imageCursor.moveToFirst()) {
+                do {
+                    String filePath = imageCursor.getString(dataColumnIndex);
+                    Log.d(TAG,"added File Path: " + filePath);
+                    if(!filePath.contains("nirang")) {
+                        long addedTime = Long.parseLong(imageCursor.getString(dateAddedColumnIndex));
+                        if(addedTime > latestAddedTime){
+                            latestAddedTime = addedTime;
+                        }
+
+                        filePaths.add(filePath);
+                        Uri imageUri = Uri.parse(filePath);
+                        uris.add(imageUri);
+                    }
+                } while(imageCursor.moveToNext());
+
+                if(latestAddedTimeTmp != latestAddedTime) {
+                    SharedPreferences.Editor editor = preferences.edit();
+                    editor.putLong("latestAddedTime", latestAddedTime); //새로 찍는다.
+                    editor.commit();
+                }
             }
         }
+
+        Log.d(TAG, "added file count: " + filePaths.size());
+        imageCursor.close();
+
+        return filePaths;
     }
 
     ///////////// 앨범 추가 기능 /////////////
@@ -464,8 +420,8 @@ public class TransferService extends Service {
 
     @Override
     public void onDestroy() {
-        BTService.clientThread = null;
-        BTService.serverThread = null;
+        client = null;
+        serverThread = null;
         super.onDestroy();
     }
 }

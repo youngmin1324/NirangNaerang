@@ -25,9 +25,6 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.Spinner;
 import android.widget.Toast;
-
-
-import org.androidtown.sharepic.btxfr.ClientThread;
 import org.androidtown.sharepic.btxfr.ServerThread;
 
 import java.io.File;
