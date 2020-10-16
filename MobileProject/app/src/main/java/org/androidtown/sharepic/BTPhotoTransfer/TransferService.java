@@ -27,7 +27,7 @@ import org.androidtown.sharepic.Album;
 import org.androidtown.sharepic.AlbumDBHandler;
 import org.androidtown.sharepic.MyApplication;
 import org.androidtown.sharepic.Photo;
-import org.androidtown.sharepic.btxfr.Client;
+import org.androidtown.sharepic.btxfr.ClientThread;
 import org.androidtown.sharepic.btxfr.MessageType;
 import org.androidtown.sharepic.btxfr.ProgressData;
 import org.androidtown.sharepic.btxfr.ServerThread;
@@ -41,13 +41,16 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class TransferService extends Service {
     private static final String TAG = "BTPHOTO/TransferService";
     private BluetoothAdapter adapter;
     private Handler clientHandler;
     private Handler serverHandler;
-    private Client client;
+    private BlockingQueue<String> transferQueue;
+    private ClientThread clientThread;
     private ServerThread serverThread;
     private static final String IMAGE_FILE_NAME = "nr";
     private static final int IMAGE_QUALITY = 100;
@@ -55,11 +58,47 @@ public class TransferService extends Service {
     private ContentObserver observer;
     private SharedPreferences preferences;
     private ArrayList<Uri> uris;
-
+    private BluetoothDevice device;
     ///////////// 앨범 추가 기능 /////////////
     private ContentResolver contentResolver;
+    private String curFilePath;
 
-    public TransferService() {
+    class PutThread extends Thread{
+        BlockingQueue<String> mBlockingQueue;
+        String mFilePath;
+        public PutThread(BlockingQueue<String> blockingQueue, String filePath){
+            mBlockingQueue = blockingQueue;
+            mFilePath = filePath;
+        }
+
+        @Override
+        public void run() {
+            try {
+                Log.d(TAG, "put filePath");
+                mBlockingQueue.put(mFilePath);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    class TakeThread extends Thread{
+        BlockingQueue<String> mBlockingQueue;
+        public TakeThread(BlockingQueue<String> blockingQueue){
+            mBlockingQueue = blockingQueue;
+        }
+
+        @Override
+        public void run() {
+            try {
+                curFilePath = mBlockingQueue.take();
+                Log.d(TAG, "take filePath");
+                clientThread = new ClientThread(device, clientHandler);
+                clientThread.start();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @Override
@@ -79,7 +118,7 @@ public class TransferService extends Service {
                 switch (message.what) {
                     case MessageType.READY_FOR_DATA: {
                         try {
-                            File file = new File((String)message.obj);
+                            File file = new File(curFilePath);
 
                             //전처리 & 전송
                             if(file==null)
@@ -101,13 +140,13 @@ public class TransferService extends Service {
                             // Invoke client thread to send
                             Message imageMessage = new Message();
                             imageMessage.obj = compressedImage;
-                            client.incomingHandler.sendMessage(imageMessage);
+                            clientThread.incomingHandler.sendMessage(imageMessage);
 
                         } catch (Exception e) {
                             Log.d(TAG, e.toString());
                             Message msg = new Message();
                             msg.obj = null;
-                            client.incomingHandler.sendMessage(msg);
+                            clientThread.incomingHandler.sendMessage(msg);
                         }
 
                         break;
@@ -130,6 +169,10 @@ public class TransferService extends Service {
                     case MessageType.DIGEST_DID_NOT_MATCH: {
                         Toast.makeText(getApplicationContext(), "Photo was sent, but didn't go through correctly", Toast.LENGTH_SHORT).show();
                         break;
+                    }
+
+                    case MessageType.SOCKET_CLOSED:{
+                        new TakeThread(transferQueue).start();
                     }
                 }
             }
@@ -181,6 +224,9 @@ public class TransferService extends Service {
             }
         };
 
+        transferQueue = new LinkedBlockingQueue<>();
+        new TakeThread(transferQueue).start();
+
         adapter = BluetoothAdapter.getDefaultAdapter();
 
         if (serverThread == null) {
@@ -188,13 +234,6 @@ public class TransferService extends Service {
             serverThread = new ServerThread(adapter, serverHandler);
             serverThread.start();
         }
-
-//        Log.v(TAG, "Starting client thread");
-//        if (clientThread != null) {
-//            clientThread.cancel();
-//        }
-//        clientThread = new ClientThread(device, clientHandler);
-//        clientThread.start();
 
         resolver = getContentResolver();
         observer = new ContentObserver(new Handler()) {
@@ -213,6 +252,8 @@ public class TransferService extends Service {
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 true,
                 observer);
+
+        device = ((MyApplication)getApplication()).getDevice();
 
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
         SharedPreferences.Editor editor = preferences.edit();
@@ -265,13 +306,10 @@ public class TransferService extends Service {
     void moveFile(ArrayList<String> filePaths) {
         Log.d(TAG, "*moveFile*");
 
-        String filePath;
-        Uri uri;
         for(int i=0;i<filePaths.size();i++){
-            filePath = filePaths.get(i);
+            String filePath = filePaths.get(i);
             Log.d(TAG, "file: " + filePath);
 
-            uri = uris.get(i);
             File file = new File(filePath);
 
             ///////////// 앨범 추가 /////////////
@@ -279,13 +317,8 @@ public class TransferService extends Service {
 
             //자동전송 기연추가
             for (BluetoothDevice device : adapter.getBondedDevices()) {
-                if (((MyApplication)getApplication()).getDevice().equals(device)) { //서비스에서 받아오도록했음
-                    if(client == null){
-                        client = new Client(device, clientHandler);
-                    }
-
-                    client.setmFilePath(filePath);
-                    new Thread(client).start();
+                if (this.device.equals(device)) { //서비스에서 받아오도록했음
+                    new PutThread(transferQueue, filePath).start();
                 }
             }
         }
@@ -420,8 +453,6 @@ public class TransferService extends Service {
 
     @Override
     public void onDestroy() {
-        client = null;
-        serverThread = null;
         super.onDestroy();
     }
 }
